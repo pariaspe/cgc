@@ -81,6 +81,14 @@ def get_mission_item(system, component, *args):
     return item
 
 
+def mission_item_to_text(item):
+    str_item = str(item.seq) + "\t" + str(item.current) + "\t" + str(item.frame) + "\t" + str(item.command) + \
+               "\t" + str(item.param1) + "\t" + str(item.param2) + "\t" + str(item.param3) + "\t" + \
+               str(item.param4) + "\t" + str(item.x) + "\t" + str(item.y) + "\t" + str(item.z) + "\t" + \
+               str(item.autocontinue) + "\n"
+    return str_item
+
+
 def reset_mission(master):
     """
     Implementation of clearing missions MAVLink Protocol
@@ -188,3 +196,80 @@ def set_px4_mission(master, mission):
         return 0
     else:
         return 1
+
+
+def get_px4_mission(master):
+    """
+    Implementation of downloading a mission of the vehicle by MAVLink Protocol
+    :param master: mavlink connection
+    :return: mission at the vehicle as a Mission class
+    """
+
+    mission = []
+
+    mission_request_list = mavutil.mavlink.MAVLink_mission_request_list_message(master.target_system,
+                                                                                master.target_component)
+
+    retry = 0
+    while retry < MAX_RETRIES*10:
+        master.mav.send(mission_request_list)
+        count = master.recv_match(type=['MISSION_COUNT', 'MISSION_ACK'], blocking=True, timeout=MISSION_TIMEOUT)
+        # print(retry, count)
+        if count is not None:
+            if count.get_type() == 'MISSION_ACK' and count.type != 0:
+                count = None
+            if count.get_type() == 'MISSION_ACK' and count.type == 0:
+                continue
+            print(count)
+            break
+        retry += 1
+
+    print(count)
+    if count is None:
+        print("[MAVLink Driver] Mission download failed. Count not received.")
+        return 1
+
+    count = getattr(count, "count")
+    print("[MAVLink Driver] Getting {0} mission items..".format(count))
+
+    seq = 0
+    retry = 0
+    mission_item = None
+    while seq < count:
+        if retry > MAX_RETRIES*10:
+            mission_item = None
+            break
+        mission_request = mavutil.mavlink.MAVLink_mission_request_int_message(master.target_system, master.target_component,
+                                                                              seq)
+        master.mav.send(mission_request)
+
+        mission_item = master.recv_match(type=['MISSION_ITEM', 'MISSION_ITEM_INT', 'MISSION_ACK'], blocking=True, timeout=MISSION_TIMEOUT)
+        # print(retry, mission_item)
+        if mission_item is not None:
+            if mission_item.get_type() == 'MISSION_ACK' and count.type != 0:
+                mission_item = None
+                break
+            if mission_item.get_type() == 'MISSION_ACK' and count.type != 0:
+                continue
+
+            if seq == getattr(mission_item, "seq"):
+                mission.append(mission_item)
+
+            retry = 0
+
+            print(mission_item)
+            print("[MAVLink Driver] Mission item {0} received.".format(getattr(mission_item, "seq")))
+            seq = getattr(mission_item, "seq") + 1
+        else:
+            retry += 1
+
+    if mission_item is None:
+        print("[MAVLink Driver] Mission download failed. Count not received.")
+        return 1
+
+    print("[MAVLink Driver] Mission download completed.")
+
+    mission_ack = mavutil.mavlink.MAVLink_mission_ack_message(master.target_system, master.target_component, 0)
+    master.mav.send(mission_ack)
+
+    return mission

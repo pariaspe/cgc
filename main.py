@@ -2,7 +2,8 @@
 
 import sys
 import threading
-from MAVLinkDriver import uav_connect, get_mission_item, heartbeat_handler, set_px4_mission
+from MAVLinkDriver import uav_connect, get_mission_item, heartbeat_handler, set_px4_mission, get_px4_mission, \
+    mission_item_to_text
 
 DEFAULT_MISSION = "mission.txt"
 # DEFAULT_CONNECTION = "udp:127.0.0.1:14540"
@@ -38,6 +39,18 @@ def read_mission_from_file(filename):
     return items
 
 
+def write_mission_to_file(filename, mission):
+    if not filename:
+        for item in mission:
+            print(item)
+    else:
+        file = open(filename, 'w')
+        file.write("UAVCommander WPL 2.0\n")
+        for item in mission:
+            file.write(mission_item_to_text(item))
+        file.close()
+
+
 def do_send(*args):
     data = args[0]
     if not data:
@@ -65,6 +78,22 @@ def do_show(*args):
     items = read_mission_from_file(mission_file)
     for item in items:
         print(item)
+
+
+def do_download(*args):
+    data = args[0]
+    if not data:
+        mission_file = ''
+    else:
+        mission_file = data[0]
+
+    if MASTER is None:
+        print("[Error] Establish connection first.", file=sys.stderr)
+        return -1
+    mission = get_px4_mission(MASTER)
+
+    if mission != 1:
+        write_mission_to_file(mission_file, mission)
 
 
 def do_connect(*args):
@@ -102,6 +131,7 @@ def do_help(*args):
         print("Type 'help cgc' to know more about Command Ground Control in general.")
         print("")
         print("connect [connection] [baudrate]")
+        print("download [filename]")
         print("help [cmd]")
         print("send [filename]")
         print("show [filename]")
@@ -112,6 +142,9 @@ def do_help(*args):
         print("Description: WORK IN PROGRESS")
     elif data[0] == "connect":
         print("connect: connect [connection] [baudrate]")
+        print("WORK IN PROGRESS")
+    elif data[0] == "download":
+        print("download: download [filename]")
         print("WORK IN PROGRESS")
     elif data[0] == "help":
         print("help: help [cmd]")
@@ -132,6 +165,8 @@ def process_line(s):
         do_help(tokens[1:])
     elif tokens[0] == "connect":
         do_connect(tokens[1:])
+    elif tokens[0] == "download":
+        do_download(tokens[1:])
     elif tokens[0] == "show":
         do_show(tokens[1:])
     elif tokens[0] == "send":
