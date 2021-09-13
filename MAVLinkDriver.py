@@ -31,6 +31,13 @@ def uav_connect(port, baudrate=None):
     else:
         print("[MAVLink Driver] Heartbeat NOT received, bad connection.")
 
+    if heartbeat.autopilot == 3:
+        print("ArduPilot")
+    elif heartbeat.autopilot == 12:
+        print("PX4")
+    else:
+        print("Other")
+
     if master.mavlink20():
         print('[MAVLink Driver] MAVLink version: 2.0')
     else:
@@ -139,7 +146,7 @@ def set_px4_mission(master, mission):
 
     msg = None
     retry = 0
-    while retry < MAX_RETRIES*10:
+    while retry < MAX_RETRIES*4:
         msg = master.recv_match(type=['MISSION_REQUEST', 'MISSION_REQUEST_INT', 'MISSION_ACK'], blocking=True, timeout=MISSION_TIMEOUT)
         if msg is None:
             if version == 2:
@@ -163,7 +170,7 @@ def set_px4_mission(master, mission):
 
     retry = 0
 
-    while retry < MAX_RETRIES*10:
+    while retry < MAX_RETRIES*4:
         print('[MAVLink Driver] Sending waypoint {0} '.format(seq) + format(mission[seq]))
         master.mav.send(mission[seq])
         msg = master.recv_match(type=['MISSION_REQUEST', 'MISSION_REQUEST_INT', 'MISSION_ACK'], blocking=True, timeout=MISSION_TIMEOUT)
@@ -172,11 +179,12 @@ def set_px4_mission(master, mission):
             print(msg)
             if msg.get_type() == 'MISSION_ACK':
                 mission_validation = msg
-                if seq == len(mission)-1:
+                if seq == len(mission)-1 and getattr(msg, 'type') == 0:
                     break
                 else:
-                    if getattr(msg, 'type') != 0:
+                    if getattr(msg, 'type') == 1:
                         break
+                        # pass
                     continue
 
             seq = msg.seq
